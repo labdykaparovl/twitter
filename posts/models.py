@@ -1,11 +1,36 @@
+import io
+
+from django.utils import timezone
 from django.contrib import admin
 from django.db import models
-
+from PIL import Image, ImageFont, ImageDraw
+from django.core.files import File
 from accounts.models import Profile
 
 
+def proces_image(img, text=None, ext='png', font_type='arial.ttf', font_size=32, new_height=None, new_width=None):
+    image = Image.open(img)
+    width, height = image.size
+    if new_height:
+        new_width = int(width * new_height / height)
+    elif new_width:
+        new_height = int(height * new_width / width)
+    if new_height and new_width:
+        image.resize(new_width, new_height)
+
+    if text:
+        img_draw = ImageDraw.Draw(image)
+        font = ImageFont.truetype(font_type, font_size)
+
+        img_draw.text((10, 10), text, font=font)
+
+    image_io = io.BytesIO()
+    image.save(image_io, ext)
+    return File(image_io, f'image.{ext})')
+
+
 def tweet_image_store(instance, filename):
-    return f'profile/{instance.profile.user.username}/{instance.created_add}/{filename}'
+    return f'profile/{instance.profile.user.username}/{timezone.now().strftime("%Y%m%d_%D%M")}/{filename}'
 
 
 class Tweet(models.Model):
@@ -18,6 +43,12 @@ class Tweet(models.Model):
     class Meta:
         verbose_name = 'Твит'
         verbose_name_plural = 'Твиты'
+
+    def save(self, *args, **kwargs):
+        if self.image:
+            self.image = proces_image(self.image, text='Propperty of me', font_size=24)
+
+        super().save(*args, **kwargs)
 
     def all_reactions(self):
         result = {}
@@ -48,9 +79,35 @@ class Tweet(models.Model):
         return str(reactions)
 
 
+def reply_proces_image(img, text=None, ext='png', font_type='arial.ttf', font_size=32, new_height=None, new_width=None):
+    image = Image.open(img)
+    width, height = image.size
+    if new_height:
+        new_width = int(width * new_height / height)
+    elif new_width:
+        new_height = int(height * new_width / width)
+    if new_height and new_width:
+        image.resize(new_width, new_height)
+
+    if text:
+        img_draw = ImageDraw.Draw(image)
+        font = ImageFont.truetype(font_type, font_size)
+
+        img_draw.text((10, 10), text, font=font)
+
+    image_io = io.BytesIO()
+    image.save(image_io, ext)
+    return File(image_io, f'image.{ext})')
+
+
+def reply_image_store(instance, filename):
+    return f'profile/{instance.profile.user.username}/{instance.tweet.text}/{filename}'
+
+
 class Reply(models.Model):
     tweet = models.ForeignKey(Tweet, on_delete=models.CASCADE)
     text = models.CharField(max_length=140)
+    image = models.ImageField(upload_to=reply_image_store, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     profile = models.ForeignKey(Profile, on_delete=models.PROTECT)
@@ -64,6 +121,12 @@ class Reply(models.Model):
             else:
                 result[reaction.reaction.name] = 1
         return result
+
+    def save(self, *args, **kwargs):
+        if self.image:
+            self.image = reply_proces_image(self.image, text='Gg', font_size=16, new_width=30, new_height=50)
+
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.text
